@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Bubble-like Chat Demo</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="app">
+    <section id="auth-view" class="screen">
+      <div class="auth-card">
+        <div class="logo">bubble<span>+</span></div>
+        <p class="sub">친구와 둘이 쓰는 버블 스타일 채팅</p>
+
+        <div id="login-panel">
+          <h1>로그인</h1>
+          <input id="login-email" type="email" placeholder="이메일" autocomplete="email" />
+          <input id="login-password" type="password" placeholder="비밀번호" autocomplete="current-password" />
+          <button id="login-btn" class="primary">로그인</button>
+          <button id="show-signup" class="text-btn">처음이라면 회원가입</button>
+        </div>
+
+        <div id="signup-panel" class="hidden">
+          <h1>회원가입</h1>
+          <input id="signup-email" type="email" placeholder="이메일" autocomplete="email" />
+          <input id="signup-password" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="new-password" />
+          <input id="signup-name" type="text" placeholder="표시 이름" maxlength="30" />
+          <input id="signup-nickname" type="text" placeholder="팬 닉네임 (팬 계정이면 사용)" maxlength="30" />
+          <button id="signup-btn" class="primary">계정 만들기</button>
+          <button id="show-login" class="text-btn">로그인으로 돌아가기</button>
+        </div>
+
+        <p id="auth-message" class="message"></p>
+      </div>
+    </section>
+
+    <section id="setup-view" class="screen hidden">
+      <div class="setup-card">
+        <div class="logo">bubble<span>+</span></div>
+        <h1>프로필 설정</h1>
+        <p>처음 가입한 계정의 이름과 닉네임을 정해주세요.</p>
+        <input id="setup-name" type="text" placeholder="표시 이름" maxlength="30" />
+        <input id="setup-nickname" type="text" placeholder="팬 닉네임" maxlength="30" />
+        <button id="setup-save" class="primary">저장하고 들어가기</button>
+        <button id="setup-logout" class="text-btn">로그아웃</button>
+        <p id="setup-message" class="message"></p>
+      </div>
+    </section>
+
+    <section id="chat-view" class="chat-shell hidden">
+      <header class="topbar">
+        <div class="artist-summary">
+          <img id="artist-avatar" class="avatar top-avatar" src="https://placehold.co/100x100/png?text=A" alt="" />
+          <div>
+            <div id="artist-name" class="artist-name">Artist</div>
+            <div id="subscription-days" class="sub-days">구독 +1일</div>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button id="profile-btn" class="icon-btn" title="프로필">☰</button>
+        </div>
+      </header>
+
+      <main id="messages" class="messages"></main>
+
+      <div id="reply-preview" class="reply-preview hidden">
+        <div>
+          <div class="reply-label">답장할 메시지</div>
+          <div id="reply-text" class="reply-text"></div>
+        </div>
+        <button id="cancel-reply" class="close-btn">×</button>
+      </div>
+
+      <form id="composer" class="composer">
+        <textarea id="message-input" rows="1" maxlength="2000" placeholder="메시지를 입력하세요"></textarea>
+        <button type="submit" class="send-btn">↑</button>
+      </form>
+
+      <div id="profile-sheet" class="sheet hidden">
+        <div class="sheet-card">
+          <div class="sheet-title">내 프로필</div>
+          <input id="profile-name" type="text" maxlength="30" placeholder="표시 이름" />
+          <input id="profile-nickname" type="text" maxlength="30" placeholder="닉네임" />
+          <input id="profile-avatar" type="url" placeholder="프로필 사진 URL (선택)" />
+          <button id="profile-save" class="primary">저장</button>
+          <button id="profile-logout" class="text-btn">로그아웃</button>
+          <button id="profile-close" class="text-btn">닫기</button>
+          <p id="profile-message" class="message"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    const cfg = window.BUBBLE_CONFIG || {};
+    if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) {
+      document.querySelector('#auth-message').textContent =
+        'config.js에 Supabase URL과 Publishable/anon key를 먼저 넣어주세요.';
+    }
+    const supabaseClient = (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY)
+      ? supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY)
+      : null;
+
+    const $ = (s) => document.querySelector(s);
+    let session = null, me = null, artist = null, conversation = null;
+    let replyTo = null, realtimeChannel = null;
+
+    const escapeHtml = (str='') => str.replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+    }[c]));
+
+    function show(view) {
+      ['auth-view','setup-view','chat-view'].forEach(id => $('#' + id).classList.add('hidden'));
+      $('#' + view).classList.remove('hidden');
+    }
+
+    function setAuthMessage(msg, error=false) {
+      $('#auth-message').textContent = msg || '';
+      $('#auth-message').className = 'message ' + (error ? 'error' : '');
+    }
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('ko-KR', {hour:'numeric', minute:'2-digit', hour12:true});
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric', weekday:'short'});
+    }
+
+    function daysSince(dateString) {
+      const start = new Date(dateString);
+      const now = new Date();
+      const a = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.max(1, Math.floor((b-a)/86400000)+1);
+    }
+
+    function renderReplyPreview() {
+      $('#reply-preview').classList.toggle('hidden', !replyTo);
+      if (replyTo) $('#reply-text').textContent = replyTo.body;
+    }
+
+    function transformMentions(text) {
+      if (!me) return text;
+      return text.replace(/@@/g, me.nickname || me.display_name || '팬');
+    }
+
+    function messageHtml(m) {
+      const mine = m.sender_id === me.id;
+      const sender = mine ? me : artist;
+      const avatar = sender?.avatar_url || 'https://placehold.co/100x100/png?text=A';
+      const body = escapeHtml(transformMentions(m.body)).replace(/\n/g,'<br>');
+      const reply = m.reply_to;
+      const replyBlock = reply ? `
+        <div class="quoted">
+          <div class="quoted-name">${escapeHtml(reply.sender_name || '')}</div>
+          <div>${escapeHtml(transformMentions(reply.body))}</div>
+        </div>` : '';
+
+      let special = '';
+      if (!mine && reply) {
+        special = `<div class="artist-reply-label">아티가 나에게 답장했어요! <span>♥</span></div>`;
+      }
+
+      return `
+        <div class="msg-row ${mine ? 'mine' : 'theirs'}" data-id="${m.id}">
+          ${!mine ? `<img class="avatar msg-avatar" src="${escapeHtml(avatar)}" alt="">` : ''}
+          <div class="msg-content">
+            ${!mine ? `<div class="sender-name">${escapeHtml(sender?.display_name || 'Artist')}</div>` : ''}
+            <div class="bubble ${mine ? 'mine-bubble' : 'their-bubble'}">
+              ${special}
+              ${replyBlock}
+              <div class="body">${body}</div>
+            </div>
+            <div class="meta">
+              <span>${formatTime(m.created_at)}</span>
+              ${!mine && me.role === 'artist' ? `<button class="reply-btn" data-reply="${m.id}">답장</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function loadMessages() {
+      if (!conversation) return;
+      const {data, error} = await supabaseClient
+        .from('messages')
+        .select('id, sender_id, body, created_at, reply_to_id')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', {ascending:true});
+      if (error) return console.error(error);
+
+      const replyIds = [...new Set(data.filter(x=>x.reply_to_id).map(x=>x.reply_to_id))];
+      let replies = {};
+      if (replyIds.length) {
+        const {data: rd} = await supabaseClient
+          .from('messages')
+          .select('id, sender_id, body')
+          .in('id', replyIds);
+        (rd || []).forEach(r => replies[r.id] = r);
+      }
+
+      const mapped = data.map(m => ({
+        ...m,
+        reply_to: m.reply_to_id ? {
+          ...replies[m.reply_to_id],
+          sender_name: replies[m.reply_to_id]?.sender_id === me.id ? me.display_name : artist?.display_name
+        } : null
+      }));
+      $('#messages').innerHTML = mapped.map(messageHtml).join('');
+      $('#messages').scrollTop = $('#messages').scrollHeight;
+    }
+
+    async function ensureConversation() {
+      const {data: artists, error: ae} = await supabaseClient.from('profiles').select('*').eq('role','artist').limit(1);
+      if (ae) throw ae;
+      artist = artists?.[0] || null;
+
+      if (!artist) {
+        $('#messages').innerHTML = `<div class="empty-state">아직 아티스트 계정이 없습니다.<br>친구가 가입한 뒤 Supabase에서 그 계정을 artist로 지정해주세요.</div>`;
+        return false;
+      }
+
+      const {data: existing, error: ce} = await supabaseClient
+        .from('conversations').select('*')
+        .eq('fan_id', me.role === 'fan' ? me.id : artist.id)
+        .eq('artist_id', me.role === 'artist' ? me.id : artist.id)
+        .maybeSingle();
+      if (ce) throw ce;
+
+      if (existing) {
+        conversation = existing;
+      } else {
+        const fanId = me.role === 'fan' ? me.id : artist.id;
+        const artistId = me.role === 'artist' ? me.id : artist.id;
+        const {data: created, error: createErr} = await supabaseClient
+          .from('conversations').insert({fan_id:fanId, artist_id:artistId}).select().single();
+        if (createErr) throw createErr;
+        conversation = created;
+      }
+      return true;
+    }
+
+    function setupRealtime() {
+      if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+      realtimeChannel = supabaseClient
+        .channel('messages-' + conversation.id)
+        .on('postgres_changes',
+          {event:'*', schema:'public', table:'messages', filter:`conversation_id=eq.${conversation.id}`},
+          () => loadMessages())
+        .subscribe();
+    }
+
+    async function openChat() {
+      show('chat-view');
+      $('#artist-name').textContent = artist?.display_name || 'Artist';
+      $('#artist-avatar').src = artist?.avatar_url || 'https://placehold.co/100x100/png?text=A';
+      if (me.role === 'fan') {
+        $('#subscription-days').textContent = `구독 +${daysSince(me.subscription_started_at)}일`;
+      } else {
+        $('#subscription-days').textContent = '아티스트 계정';
+      }
+      await loadMessages();
+      setupRealtime();
+    }
+
+    async function refreshMe() {
+      const {data:{user}} = await supabaseClient.auth.getUser();
+      if (!user) { show('auth-view'); return; }
+      session = user;
+      const {data: profile, error} = await supabaseClient.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (error) { setAuthMessage(error.message,true); return; }
+      if (!profile) {
+        show('setup-view');
+        return;
+      }
+      me = profile;
+      if (!me.display_name) { show('setup-view'); return; }
+      try {
+        const ok = await ensureConversation();
+        if (ok) await openChat();
+        else show('chat-view');
+      } catch (e) {
+        console.error(e);
+        show('chat-view');
+        $('#messages').innerHTML = `<div class="empty-state error">${escapeHtml(e.message || String(e))}</div>`;
+      }
+    }
+
+    async function signUp() {
+      if (!supabaseClient) return;
+      const email = $('#signup-email').value.trim();
+      const password = $('#signup-password').value;
+      const name = $('#signup-name').value.trim();
+      const nickname = $('#signup-nickname').value.trim() || name;
+      if (!email || password.length < 6 || !name) {
+        setAuthMessage('이메일, 6자 이상 비밀번호, 이름을 입력해주세요.', true); return;
+      }
+      const {data, error} = await supabaseClient.auth.signUp({email,password});
+      if (error) { setAuthMessage(error.message,true); return; }
+
+      if (data.user) {
+        const {error: pe} = await supabaseClient.from('profiles').insert({
+          id:data.user.id, role:'fan', display_name:name, nickname:nickname,
+          subscription_started_at:new Date().toISOString()
+        });
+        if (pe) { setAuthMessage('계정은 만들어졌지만 프로필 저장에 실패했습니다: '+pe.message,true); return; }
+      }
+      setAuthMessage('가입 완료. 이메일 인증이 켜져 있다면 메일을 확인한 뒤 로그인해주세요.');
+      $('#show-login').click();
+    }
+
+    async function login() {
+      if (!supabaseClient) return;
+      const email = $('#login-email').value.trim(), password = $('#login-password').value;
+      const {error} = await supabaseClient.auth.signInWithPassword({email,password});
+      if (error) setAuthMessage(error.message,true);
+      else await refreshMe();
+    }
+
+    async function saveSetup() {
+      const name = $('#setup-name').value.trim();
+      const nickname = $('#setup-nickname').value.trim() || name;
+      if (!name) { $('#setup-message').textContent='이름을 입력해주세요.'; return; }
+      const {error} = await supabaseClient.from('profiles').upsert({
+        id:session.id, role:'fan', display_name:name, nickname:nickname,
+        subscription_started_at:new Date().toISOString()
+      });
+      if (error) { $('#setup-message').textContent=error.message; return; }
+      await refreshMe();
+    }
+
+    async function sendMessage() {
+      const body = $('#message-input').value.trim();
+      if (!body || !conversation) return;
+      const payload = {
+        conversation_id:conversation.id, sender_id:me.id, body,
+        reply_to_id: replyTo?.id || null
+      };
+      const {error} = await supabaseClient.from('messages').insert(payload);
+      if (error) alert(error.message);
+      else {
+        $('#message-input').value='';
+        replyTo=null; renderReplyPreview();
+        await loadMessages();
+      }
+    }
+
+    async function openProfile() {
+      $('#profile-name').value=me.display_name||'';
+      $('#profile-nickname').value=me.nickname||'';
+      $('#profile-avatar').value=me.avatar_url||'';
+      $('#profile-sheet').classList.remove('hidden');
+    }
+
+    async function saveProfile() {
+      const name=$('#profile-name').value.trim();
+      const nickname=$('#profile-nickname').value.trim() || name;
+      const avatar=$('#profile-avatar').value.trim() || null;
+      const {data,error}=await supabaseClient.from('profiles')
+        .update({display_name:name,nickname,avatar_url:avatar}).eq('id',me.id).select().single();
+      if (error) { $('#profile-message').textContent=error.message; return; }
+      me=data; $('#profile-sheet').classList.add('hidden');
+      await openChat();
+    }
+
+    $('#show-signup').onclick=()=>{$('#login-panel').classList.add('hidden');$('#signup-panel').classList.remove('hidden');setAuthMessage('');};
+    $('#show-login').onclick=()=>{$('#signup-panel').classList.add('hidden');$('#login-panel').classList.remove('hidden');setAuthMessage('');};
+    $('#signup-btn').onclick=signUp;
+    $('#login-btn').onclick=login;
+    $('#setup-save').onclick=saveSetup;
+    $('#setup-logout').onclick=()=>supabaseClient.auth.signOut();
+    $('#composer').onsubmit=(e)=>{e.preventDefault();sendMessage();};
+    $('#cancel-reply').onclick=()=>{replyTo=null;renderReplyPreview();};
+    $('#profile-btn').onclick=openProfile;
+    $('#profile-close').onclick=()=>$('#profile-sheet').classList.add('hidden');
+    $('#profile-save').onclick=saveProfile;
+    $('#profile-logout').onclick=()=>supabaseClient.auth.signOut();
+
+    $('#messages').addEventListener('click', async (e)=>{
+      const btn=e.target.closest('.reply-btn');
+      if(!btn) return;
+      const id=btn.dataset.reply;
+      const {data}=await supabaseClient.from('messages').select('id,body,sender_id').eq('id',id).single();
+      if(data){replyTo=data;renderReplyPreview();}
+    });
+
+    supabaseClient?.auth.onAuthStateChange(async (event) => {
+      if (event === 'SIGNED_OUT') {
+        me=null; session=null; artist=null; conversation=null;
+        show('auth-view');
+      }
+    });
+
+    if (supabaseClient) refreshMe();
+  </script>
+</body>
+</html>

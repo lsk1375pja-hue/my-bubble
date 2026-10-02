@@ -1,0 +1,65 @@
+*{box-sizing:border-box}
+:root{
+  --pink:#ff3f66;
+  --bg:#fff;
+  --soft:#f5f5f7;
+  --text:#3d3d43;
+  --muted:#a4a4ab;
+  --line:#ececf0;
+}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:#fff;color:var(--text)}
+body{overflow:hidden}
+button,input,textarea{font:inherit}
+button{cursor:pointer;border:0}
+.hidden{display:none!important}
+.screen{height:100dvh;display:grid;place-items:center;padding:20px;background:#fafafa}
+.auth-card,.setup-card{width:min(420px,100%);padding:34px 28px;border-radius:28px;background:#fff;box-shadow:0 15px 50px rgba(30,30,40,.08)}
+.logo{font-size:28px;font-weight:800;letter-spacing:-1.5px}
+.logo span{color:var(--pink)}
+.sub{color:var(--muted);margin:7px 0 28px}
+h1{font-size:22px;margin:0 0 18px;letter-spacing:-.5px}
+input,textarea{width:100%;border:1px solid var(--line);outline:none;background:#fafafd;color:var(--text);border-radius:14px;padding:13px 14px;margin-bottom:10px}
+input:focus,textarea:focus{border-color:#ffb0bf}
+.primary{width:100%;background:var(--pink);color:#fff;border-radius:14px;padding:14px;font-weight:700;margin-top:5px}
+.text-btn{background:none;color:#999;padding:12px;width:100%}
+.message{min-height:20px;font-size:13px;color:#777;margin:10px 0 0;line-height:1.5}
+.message.error{color:#e33}
+.chat-shell{height:100dvh;display:flex;flex-direction:column;background:#fff}
+.topbar{height:72px;flex:0 0 72px;border-bottom:1px solid #f0f0f2;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:relative;background:rgba(255,255,255,.95);z-index:2}
+.artist-summary{display:flex;align-items:center;gap:11px}
+.avatar{width:46px;height:46px;border-radius:50%;object-fit:cover;background:#eee}
+.top-avatar{width:43px;height:43px}
+.artist-name{font-weight:750;font-size:16px}
+.sub-days{font-size:12px;color:var(--pink);margin-top:2px}
+.icon-btn{background:#fff;color:#888;font-size:22px;width:42px;height:42px;border-radius:50%}
+.messages{flex:1;overflow:auto;padding:20px 16px 110px;background:#fff}
+.msg-row{display:flex;width:100%;margin:9px 0;align-items:flex-start}
+.msg-row.theirs{gap:10px}
+.msg-row.mine{justify-content:flex-end}
+.msg-content{max-width:min(78%,520px)}
+.msg-row.mine .msg-content{display:flex;flex-direction:column;align-items:flex-end}
+.msg-avatar{width:44px;height:44px;flex:0 0 44px}
+.sender-name{font-size:14px;color:#666;margin:1px 0 6px 2px}
+.bubble{padding:14px 16px;border-radius:22px;line-height:1.48;font-size:16px;word-break:break-word;letter-spacing:-.2px}
+.mine-bubble{background:var(--pink);color:#fff;border-top-right-radius:5px}
+.their-bubble{background:#f5f5f7;color:#555;border-top-left-radius:5px}
+.meta{color:#b1b1b7;font-size:11px;margin:4px 5px;display:flex;align-items:center;gap:7px}
+.reply-btn{background:none;color:#aaa;font-size:11px;padding:0}
+.artist-reply-label{color:#e9486c;font-weight:750;font-size:15px;margin-bottom:10px}
+.artist-reply-label span{font-size:17px}
+.quoted{border-left:3px solid #e7e7eb;padding:2px 0 2px 10px;margin:0 0 11px;color:#999;font-size:13px}
+.quoted-name{font-size:11px;color:#aaa;margin-bottom:2px}
+.reply-preview{position:absolute;bottom:62px;left:0;right:0;background:#fff;border-top:1px solid #eee;padding:9px 18px;display:flex;justify-content:space-between;z-index:4}
+.reply-label{font-size:11px;color:var(--pink);font-weight:700}.reply-text{font-size:12px;color:#888;max-width:75%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.close-btn{background:none;color:#aaa;font-size:22px}
+.composer{height:62px;flex:0 0 62px;border-top:1px solid #eee;background:#fff;display:flex;align-items:center;gap:8px;padding:8px 12px;position:relative;z-index:5}
+.composer textarea{margin:0;resize:none;max-height:100px;border-radius:22px;padding:10px 15px;line-height:20px}
+.send-btn{width:43px;height:43px;border-radius:50%;background:var(--pink);color:#fff;font-size:22px;flex:0 0 43px}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.22);z-index:20;display:flex;align-items:flex-end}
+.sheet-card{width:100%;background:#fff;border-radius:24px 24px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.08)}
+.sheet-title{font-size:18px;font-weight:800;margin-bottom:14px}
+.empty-state{text-align:center;color:#aaa;padding:80px 20px;line-height:1.7}
+@media(min-width:700px){
+  .chat-shell{width:520px;margin:auto;border-left:1px solid #eee;border-right:1px solid #eee;box-shadow:0 0 30px rgba(0,0,0,.05)}
+  .topbar{border-radius:0}
+}
