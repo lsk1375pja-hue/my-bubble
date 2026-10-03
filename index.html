@@ -186,6 +186,7 @@
     }
 
     async function loadMessages() {
+console.log('현재 conversation:', conversation);
       if (!conversation) return;
       const {data, error} = await supabaseClient
         .from('messages')
@@ -215,36 +216,7 @@
       $('#messages').scrollTop = $('#messages').scrollHeight;
     }
 
-    async function ensureConversation() {
-      const {data: artists, error: ae} = await supabaseClient.from('profiles').select('*').eq('role','artist').limit(1);
-      if (ae) throw ae;
-      artist = artists?.[0] || null;
-
-      if (!artist) {
-        $('#messages').innerHTML = `<div class="empty-state">아직 아티스트 계정이 없습니다.<br>친구가 가입한 뒤 Supabase에서 그 계정을 artist로 지정해주세요.</div>`;
-        return false;
-      }
-
-      const {data: existing, error: ce} = await supabaseClient
-        .from('conversations').select('*')
-        .eq('fan_id', me.role === 'fan' ? me.id : artist.id)
-        .eq('artist_id', me.role === 'artist' ? me.id : artist.id)
-        .maybeSingle();
-      if (ce) throw ce;
-
-      if (existing) {
-        conversation = existing;
-      } else {
-        const fanId = me.role === 'fan' ? me.id : artist.id;
-        const artistId = me.role === 'artist' ? me.id : artist.id;
-        const {data: created, error: createErr} = await supabaseClient
-          .from('conversations').insert({fan_id:fanId, artist_id:artistId}).select().single();
-        if (createErr) throw createErr;
-        conversation = created;
-      }
-      return true;
-    }
-
+    
     function setupRealtime() {
       if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
       realtimeChannel = supabaseClient
@@ -267,6 +239,79 @@
       await loadMessages();
       setupRealtime();
     }
+
+async function ensureConversation() {
+  if (!me) return false;
+
+  // 내 팬 계정의 기존 대화 찾기
+  const { data: conv, error: convError } = await supabaseClient
+    .from('conversations')
+    .select('*')
+    .eq('fan_id', me.id)
+    .maybeSingle();
+
+  if (convError) {
+    console.error('conversation 조회 오류:', convError);
+    throw convError;
+  }
+
+  // 기존 대화가 있으면 그대로 사용
+  if (conv) {
+    conversation = conv;
+
+    // 해당 대화의 아티스트 프로필 가져오기
+    const { data: artistProfile, error: artistError } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .eq('id', conv.artist_id)
+      .maybeSingle();
+
+    if (artistError) {
+      console.error('artist 조회 오류:', artistError);
+      throw artistError;
+    }
+
+    artist = artistProfile;
+    return true;
+  }
+
+  // 기존 대화가 없으면 아티스트 찾기
+  const { data: artistProfile, error: artistError } = await supabaseClient
+    .from('profiles')
+    .select('*')
+    .eq('role', 'artist')
+    .limit(1)
+    .maybeSingle();
+
+  if (artistError) {
+    console.error('artist 조회 오류:', artistError);
+    throw artistError;
+  }
+
+  if (!artistProfile) {
+    throw new Error('아티스트 계정을 찾을 수 없습니다.');
+  }
+
+  artist = artistProfile;
+
+  // 새 대화 생성
+  const { data: newConv, error: newConvError } = await supabaseClient
+    .from('conversations')
+    .insert({
+      fan_id: me.id,
+      artist_id: artist.id
+    })
+    .select()
+    .single();
+
+  if (newConvError) {
+    console.error('conversation 생성 오류:', newConvError);
+    throw newConvError;
+  }
+
+  conversation = newConv;
+  return true;
+}
 
     async function refreshMe() {
       const {data:{user}} = await supabaseClient.auth.getUser();
@@ -292,27 +337,60 @@
     }
 
     async function signUp() {
-      if (!supabaseClient) return;
-      const email = $('#signup-email').value.trim();
-      const password = $('#signup-password').value;
-      const name = $('#signup-name').value.trim();
-      const nickname = $('#signup-nickname').value.trim() || name;
-      if (!email || password.length < 6 || !name) {
-        setAuthMessage('이메일, 6자 이상 비밀번호, 이름을 입력해주세요.', true); return;
-      }
-      const {data, error} = await supabaseClient.auth.signUp({email,password});
-      if (error) { setAuthMessage(error.message,true); return; }
+  if (!supabaseClient) return;
 
-      if (data.user) {
-        const {error: pe} = await supabaseClient.from('profiles').insert({
-          id:data.user.id, role:'fan', display_name:name, nickname:nickname,
-          subscription_started_at:new Date().toISOString()
-        });
-        if (pe) { setAuthMessage('계정은 만들어졌지만 프로필 저장에 실패했습니다: '+pe.message,true); return; }
-      }
-      setAuthMessage('가입 완료. 이메일 인증이 켜져 있다면 메일을 확인한 뒤 로그인해주세요.');
-      $('#show-login').click();
+  const btn = $('#signup-btn');
+  btn.disabled = true;
+
+  try {
+    const email = $('#signup-email').value.trim();
+    const password = $('#signup-password').value;
+    const name = $('#signup-name').value.trim();
+    const nickname = $('#signup-nickname').value.trim() || name;
+
+    if (!email || password.length < 6 || !name) {
+      setAuthMessage('이메일, 6자 이상 비밀번호, 이름을 입력해주세요.', true);
+      return;
     }
+
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password
+    });
+
+    if (error) {
+      setAuthMessage(error.message, true);
+      return;
+    }
+
+    if (!data.user) {
+      setAuthMessage('계정 생성에 실패했습니다.', true);
+      return;
+    }
+
+    const { error: pe } = await supabaseClient.from('profiles').insert({
+      id: data.user.id,
+      role: 'fan',
+      display_name: name,
+      nickname: nickname,
+      subscription_started_at: new Date().toISOString()
+    });
+
+    if (pe) {
+      setAuthMessage(
+        '계정은 만들어졌지만 프로필 저장에 실패했습니다: ' + pe.message,
+        true
+      );
+      return;
+    }
+
+    // 회원가입 직후 현재 세션으로 로그인 상태를 갱신
+    await refreshMe();
+
+  } finally {
+    btn.disabled = false;
+  }
+}
 
     async function login() {
       if (!supabaseClient) return;
