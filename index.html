@@ -186,7 +186,7 @@
     }
 
     async function loadMessages() {
-console.log('현재 conversation:', conversation);
+alert('현재 conversation: ' + JSON.stringify(conversation));
       if (!conversation) return;
       const {data, error} = await supabaseClient
         .from('messages')
