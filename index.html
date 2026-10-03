@@ -194,6 +194,7 @@ alert('현재 conversation: ' + JSON.stringify(conversation));
         .eq('conversation_id', conversation.id)
         .order('created_at', {ascending:true});
       alert('messages: ' + JSON.stringify(data) + '\nerror: ' + JSON.stringify(error));
+      alert('mapped 개수: ' + mapped.length);
       if (error) return console.error(error);
 
       const replyIds = [...new Set(data.filter(x=>x.reply_to_id).map(x=>x.reply_to_id))];
